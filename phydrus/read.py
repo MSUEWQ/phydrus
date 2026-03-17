@@ -97,7 +97,7 @@ def read_i_check(path="I_CHECK.OUT"):
             # Read data into a Pandas DataFrame
             nrows = e - start - 2
             data[i] = read_csv(file, skiprows=start + 1, nrows=nrows,
-                               skipinitialspace=True, delim_whitespace=True,
+                               skipinitialspace=True, sep='\s+',
                                names=names, dtype=float)
             start = e
         return data
@@ -224,7 +224,7 @@ def _read_file(path, start, end="end", usecols=None, idx_col=None,
 
 
 @check_file_path
-def read_obs_node(path="OBS_NODE.OUT", nodes=None, conc=False, cols=None):
+def read_obs_node(path="OBS_NODE.OUT", nodes=None, conc=False, cols=None, lFlux=False):
     """
     Method to read the OBS_NODE.OUT output file.
 
@@ -258,9 +258,12 @@ def read_obs_node(path="OBS_NODE.OUT", nodes=None, conc=False, cols=None):
     df1 = read_csv(path, skiprows=start, index_col=0, nrows=end - start - 1,
                    skipinitialspace=True, sep='\s+', engine="c")
     if cols is None:
-        cols = ["h", "theta", "Temp"]
+        cols = ["h", "theta", "Flux"]
     if conc:
         cols.append("Conc")
+        cols.append("Temp")
+        if lFlux == False:
+            cols.remove("Flux")
 
     for i, node in enumerate(nodes):
         if i > 0:
@@ -318,7 +321,7 @@ def read_nod_inf(path="NOD_INF.OUT", times=None):
                 file.seek(0)  # Go back to start of file
                 data[time] = read_csv(file, skiprows=s,
                                       skipinitialspace=True,
-                                      delim_whitespace=True,
+                                      sep='\s+',
                                       nrows=e - s - 2)
                 data[time] = data[time].drop([0])
                 data[time] = data[time].apply(to_numeric)

@@ -132,6 +132,7 @@ class Plots:
 
         col = col_names.index(data)
         _, ax = plt.subplots(figsize=figsize, **kwargs)
+        print(times)
         dfs = self.ml.read_nod_inf(times=times)
 
         if times is None or len(times) > 1:

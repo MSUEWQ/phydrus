@@ -399,9 +399,9 @@ class Model:
                           "the old information first.")
 
     def add_atmospheric_bc(self, atmosphere, ldailyvar=False, lsinusvar=False,
-                           llai=False, rextinct=0.463, hcrits=1e30, tatm=0,
-                           prec=0, rsoil=0, rroot=0, hcrita=1e5, rb=0, hb=0,
-                           ht=0, ttop=0, tbot=0, ampl=0):
+                           llai=False, rextinct=0.463, hcrits=1e30, tatm=0.0,
+                           prec=0.0, rsoil=0.0, rroot=0.0, hcrita=1e5, rb=0.0, hb=0.0,
+                           ht=0.0, ttop=0.0, tbot=0.0, ampl=0.0):
         """
         Method to add the atmospheric boundary condition to the model.
 
@@ -489,14 +489,19 @@ class Model:
         cbot = 0.0
 
         if self.water_flow['iModel'] != 9:
-            if self.root_growth['iRootIn'] == 0:
+            if self.root_growth:
+                if self.root_growth['iRootIn'] == 0:
+                    data = {"tAtm": tatm, "Prec": prec, "rSoil": rsoil, "rRoot": rroot,
+                            "hCritA": hcrita, "rB": rb, "hB": hb, "ht": ht, 
+                            "RootDepth": self.root_growth["RootDepth"]}
+                elif self.root_growth['iRootIn'] != 0:
+                    data = {"tAtm": tatm, "Prec": prec, "rSoil": rsoil, "rRoot": rroot,
+                            "hCritA": hcrita, "rB": rb, "hB": hb, "ht": ht, "tTop": ttop,
+                            "tBot": tbot, "Ampl": ampl, "cTop": ctop, "cBot": cbot}
+            else:
                 data = {"tAtm": tatm, "Prec": prec, "rSoil": rsoil, "rRoot": rroot,
-                        "hCritA": hcrita, "rB": rb, "hB": hb, "ht": ht, 
-                        "RootDepth": self.root_growth["RootDepth"]}
-            elif self.root_growth['iRootIn'] != 0:
-                data = {"tAtm": tatm, "Prec": prec, "rSoil": rsoil, "rRoot": rroot,
-                        "hCritA": hcrita, "rB": rb, "hB": hb, "ht": ht, "tTop": ttop,
-                        "tBot": tbot, "Ampl": ampl, "cTop": ctop, "cBot": cbot}
+                            "hCritA": hcrita, "rB": rb, "hB": hb, "ht": ht, "tTop": ttop,
+                            "tBot": tbot, "Ampl": ampl, "cTop": ctop, "cBot": cbot}
 
         if self.water_flow['iModel'] == 9:
             data = {"tAtm": tatm, "Prec": prec, "rSoil": rsoil, "rRoot": rroot,
@@ -986,7 +991,10 @@ class Model:
                     self.times = times[1:]
                 else:
                     self.times = times
-                self.time_info["MPL"] = 1
+                if len(self.times) < 1000:
+                    self.time_info["MPL"] = len(self.times)
+                elif len(self.times) >= 1000:
+                    self.time_info["MPL"] = 1
             else:
                 self.time_info["MPL"] = 1
                 self.times = [self.time_info["tMax"]]
@@ -1154,8 +1162,15 @@ class Model:
             lines.append(" ".join(values))
 
         lines.append("TPrint(1),TPrint(2),...,TPrint(MPL)\n")
-        lines.append(str(len(self.times)+1))
-        lines.append("\n")
+
+        if len(self.times) < 1000:
+            for i in range(int(len(self.times) / 6) + 1):
+                lines.append(
+                    " ".join([str(time) for time in self.times[i * 6:i * 6 + 6]]))
+                lines.append("\n")
+        else:
+            lines.append(str(len(self.times)+1))
+            lines.append("\n")
 
         # Write BLOCK D: Root Growth Information
         if self.basic_info["lRoot"]:
@@ -1435,15 +1450,14 @@ class Model:
 
         return data
 
-    def read_obs_node(self, fname="OBS_NODE.OUT", nodes=None, conc=False,
+    def read_obs_node(self, fname="Obs_Node.out", nodes=None, conc=False,
                       cols=None):
         path = os.path.join(self.ws_name, fname)
         if self.basic_info["lChem"]:
             conc = True
         if nodes is None:
             nodes = self.obs_nodes
-
-        data = read_obs_node(path=path, nodes=nodes, conc=conc, cols=cols)
+        data = read_obs_node(path=path, nodes=nodes, conc=conc, cols=cols, lFlux=self.basic_info['lFlux'])
         return data
 
     def read_i_check(self, fname="I_CHECK.OUT"):
