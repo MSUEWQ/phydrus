@@ -165,12 +165,16 @@ class Model:
         else:
             self.exe_name = exe_name
 
-    def add_profile(self, profile):
+    def add_profile(self, profile, qtop=None):
         """
         Method to add the soil profile to the model.
 
         """
         self.profile = profile
+
+        if self.water_flow['iModel'] == 9:
+            if qtop != None:
+                self.qtop= qtop
 
     def add_material(self, material):
         """
@@ -484,9 +488,19 @@ class Model:
         ctop = 0.0
         cbot = 0.0
 
-        data = {"tAtm": tatm, "Prec": prec, "rSoil": rsoil, "rRoot": rroot,
-                "hCritA": hcrita, "rB": rb, "hB": hb, "ht": ht, "tTop": ttop,
-                "tBot": tbot, "Ampl": ampl, "cTop": ctop, "cBot": cbot}
+        if self.water_flow['iModel'] != 9:
+            if self.root_growth['iRootIn'] == 0:
+                data = {"tAtm": tatm, "Prec": prec, "rSoil": rsoil, "rRoot": rroot,
+                        "hCritA": hcrita, "rB": rb, "hB": hb, "ht": ht, 
+                        "RootDepth": self.root_growth["RootDepth"]}
+            elif self.root_growth['iRootIn'] != 0:
+                data = {"tAtm": tatm, "Prec": prec, "rSoil": rsoil, "rRoot": rroot,
+                        "hCritA": hcrita, "rB": rb, "hB": hb, "ht": ht, "tTop": ttop,
+                        "tBot": tbot, "Ampl": ampl, "cTop": ctop, "cBot": cbot}
+
+        if self.water_flow['iModel'] == 9:
+            data = {"tAtm": tatm, "Prec": prec, "rSoil": rsoil, "rRoot": rroot,
+                "hCritA": hcrita, "rB": rb, "hB": hb, "ht": ht}
 
         self.atmosphere = DataFrame(data=data, index=atmosphere.index)
         self.atmosphere.update(atmosphere)
@@ -639,13 +653,14 @@ class Model:
         # Store the root growth information depending on the model.
         if irootin == 0:
             root_growth = {
-                "iRootIn": irootin
+                "iRootIn": irootin,
+                "RootDepth": rootdepth
             }
         elif irootin == 1:
             root_growth = {
                 "iRootIn": irootin,
-                "nGrowht": ngrowth,
-                "tGrwoth": tgrowth,
+                "nGrowth": ngrowth,
+                "tGrowth": tgrowth,
                 "RootDepth": rootdepth
             }
         elif irootin == 2:
@@ -971,7 +986,7 @@ class Model:
                     self.times = times[1:]
                 else:
                     self.times = times
-                self.time_info["MPL"] = len(self.times)
+                self.time_info["MPL"] = 1
             else:
                 self.time_info["MPL"] = 1
                 self.times = [self.time_info["tMax"]]
@@ -1100,8 +1115,23 @@ class Model:
             raise
 
         # Write the material parameters
-        lines.append(self.materials["water"].to_string(index=False))
-        lines.append("\n")
+        if(len(self.materials["water"].columns) < 17):
+            lines.append(self.materials["water"].to_string(index=False))
+            lines.append("\n")
+        
+        if(len(self.materials["water"].columns) == 17):
+            data1 = self.materials["water"].iloc[:, 0:6]
+            data2 = self.materials["water"].iloc[:, 6:17]
+
+            lines.append(data1.to_string(index=False))
+            lines.append("\n")
+            lines.append(data2.to_string(index=False))
+            lines.append("\n")
+
+            lines.append("qTop")
+            lines.append("\n")
+            lines.append(f"{self.qtop}")
+            lines.append("\n")
 
         # Write BLOCK C: TIME INFORMATION
         lines.append(string.format("C: TIME INFORMATION ", "*", "<", 72))
@@ -1124,21 +1154,35 @@ class Model:
             lines.append(" ".join(values))
 
         lines.append("TPrint(1),TPrint(2),...,TPrint(MPL)\n")
-        for i in range(int(len(self.times) / 6) + 1):
-            lines.append(
-                " ".join([str(time) for time in self.times[i * 6:i * 6 + 6]]))
-            lines.append("\n")
+        lines.append(str(len(self.times)+1))
+        lines.append("\n")
 
         # Write BLOCK D: Root Growth Information
         if self.basic_info["lRoot"]:
             lines.append(
                 string.format("D: ROOT GROWTH INFORMATION ", "*", "<", 72))
             lines.append(f"iRootDepthEntry\n{self.root_growth['iRootIn']}\n")
-            d = self.root_growth.copy()
-            d.pop("iRootIn")
-            d["\n"] = "\n"
-            lines.append("    ".join(d.keys()))
-            lines.append("    ".join(f"{p}" for p in d.values()))
+
+            if self.root_growth['iRootIn'] == 2:
+                d = self.root_growth.copy()
+                d.pop("iRootIn")
+                d["\n"] = "\n"
+                lines.append("    ".join(d.keys()))
+                lines.append("    ".join(f"{p}" for p in d.values()))
+
+            if self.root_growth['iRootIn'] == 1:
+                lines.append("nGrowth\n")
+                lines.append(f"{self.root_growth['nGrowth']}\n")
+
+                width = len(str(self.root_growth['nGrowth']))
+
+                lines.append(str("Time RootDepth\n"))
+
+                for i in list(range(self.root_growth['nGrowth'])):
+                    lines.append(str(self.root_growth['tGrowth'][i]).ljust(width))
+                    lines.append(" ")
+                    lines.append(str(self.root_growth['RootDepth'][i]))
+                    lines.append("\n")
 
         # Write Block E - Heat transport information
         if self.basic_info["lTemp"]:
@@ -1281,18 +1325,26 @@ class Model:
         vars5 = ["lDailyVar", "lSinusVar", "lLai", "lBCCycles", "lInterc",
                  "\n"]
 
-        lines.append(" ".join(vars5))
-        vals = []
-        for var in vars5[:-1]:
-            val = self.atmosphere_info[var]
-            if var:
-                if val is True:
-                    vals.append("t")
-                elif val is False:
-                    vals.append("f")
-                else:
-                    vals.append(str(val))
-        lines.append(" ".join(vals))
+        if self.water_flow['iModel'] != 9:
+            lines.append(" ".join(vars5))
+            vals = []
+            for var in vars5[:-1]:
+                val = self.atmosphere_info[var]
+                if var:
+                    if val is True:
+                        vals.append("t")
+                    elif val is False:
+                        vals.append("f")
+                    else:
+                        vals.append(str(val))
+            lines.append(" ".join(vals))
+
+        if self.water_flow['iModel'] == 9:
+            varsdp = ["DailyVar", "SinusVar", "lLay", "lBCCycles", "lInterc", "lDummy", "lDummy", "lDummy", "lDummy", "lDummy",
+                 "\n"]
+            valsdp = ["f", "f", "f", "f", "f", "f", "f", "f", "f", "f"]
+            lines.append(" ".join(varsdp))
+            lines.append(" ".join(valsdp))
 
         lines.append(f"\nhCritS (max. allowed pressure head at the soil "
                      f"surface)\n{self.atmosphere_info['hCritS']}\n")
@@ -1414,6 +1466,13 @@ class Model:
             if self.basic_info["lSnow"]:
                 usecols.append("SnowLayer")
 
+            if self.water_flow["iModel"] == 9:
+                usecols = ["Time", "rTopT", "rRootT", "vTopT", "vRootT", "vBotT",
+                        "sum(rTopT)", "sum(rRoot)", "sum(vTopT)", "sum(vRoot)",
+                        "sum(vBotT)", "hTop", "hRoot", "hBot", "vTopF", "sum(vTopF)",
+                        "vTopM", "sum(vTopM)", "vFrac", "sum(vFrac)", "vBotF", "sum(vBotF)",
+                        "vBotM", "sum(vBotM)",]
+
         data = read_tlevel(path=path, usecols=usecols)
 
         return data
@@ -1466,7 +1525,8 @@ class Model:
                 "omega"],
             7: ["thr", "ths", "Alfa", "n", "Ks", "l", "thr_im", "ths_im",
                 "Alfa_im", "n_im", "Ka"],
-            9: list(range(17))
+            9: ["thr", "ths", "Alfa", "n", "Ks", "l", "thrFr", "thsFr", 
+                "AlfaFr","nFr", "KsFr", "lFr", "W", "beta", "gamma", "a", "Ka"]
         }
 
         level2 = models[self.water_flow["iModel"]]

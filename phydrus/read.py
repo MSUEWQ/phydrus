@@ -213,11 +213,10 @@ def _read_file(path, start, end="end", usecols=None, idx_col=None,
         # Read data into a Pandas DataFrame
         data = read_csv(file, skiprows=s, nrows=e - s - 2, usecols=usecols,
                         index_col=idx_col, skipinitialspace=True,
-                        delim_whitespace=True)
+                        sep='\s+')
 
         if remove_first_row:
-            data = data.drop(index=data.index[0]).apply(to_numeric,
-                                                        errors="ignore")
+            data = data.drop(index=data.index[0]).apply(to_numeric)
         else:
             data = data.apply(to_numeric, errors="ignore")
 
@@ -257,7 +256,7 @@ def read_obs_node(path="OBS_NODE.OUT", nodes=None, conc=False, cols=None):
                 break
 
     df1 = read_csv(path, skiprows=start, index_col=0, nrows=end - start - 1,
-                   skipinitialspace=True, delim_whitespace=True, engine="c")
+                   skipinitialspace=True, sep='\s+', engine="c")
     if cols is None:
         cols = ["h", "theta", "Temp"]
     if conc:
